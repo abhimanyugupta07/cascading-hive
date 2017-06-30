@@ -22,6 +22,21 @@ package cascading.tap.hcatalog;
 
 import java.io.IOException;
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.RecordReader;
+import org.apache.hive.hcatalog.api.HCatClient;
+import org.apache.hive.hcatalog.api.HCatTable;
+import org.apache.hive.hcatalog.api.ObjectNotFoundException;
+import org.apache.hive.hcatalog.mapreduce.HCatInputFormat;
+import org.apache.hive.hcatalog.mapreduce.HCatOutputFormat;
+import org.apache.hive.hcatalog.mapreduce.OutputJobInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import cascading.flow.FlowProcess;
 import cascading.hadoop.mapred.InputFormatWrapper;
 import cascading.hadoop.mapred.OutputFormatWrapper;
@@ -34,18 +49,6 @@ import cascading.tuple.Fields;
 import cascading.tuple.Tuple;
 import cascading.tuple.TupleEntryCollector;
 import cascading.tuple.TupleEntryIterator;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.OutputCollector;
-import org.apache.hadoop.mapred.RecordReader;
-import org.apache.hive.hcatalog.api.HCatClient;
-import org.apache.hive.hcatalog.api.HCatTable;
-import org.apache.hive.hcatalog.api.ObjectNotFoundException;
-import org.apache.hive.hcatalog.mapreduce.HCatInputFormat;
-import org.apache.hive.hcatalog.mapreduce.HCatOutputFormat;
-import org.apache.hive.hcatalog.mapreduce.OutputJobInfo;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * A HCatalog-backed {@link Tap} that represents a Hive table and that can be used as both source and sink.
@@ -74,12 +77,11 @@ import org.slf4j.LoggerFactory;
  *
  * @since 2.1
  */
-public class HCatTap extends Tap<Configuration, RecordReader, OutputCollector>
-  {
+public class HCatTap extends Tap<Configuration, RecordReader, OutputCollector> {
 
   private static final long serialVersionUID = 1L;
 
-  private static final Logger LOG = LoggerFactory.getLogger( HCatTap.class );
+  private static final Logger LOG = LoggerFactory.getLogger(HCatTap.class);
 
   private final String databaseName;
   private final String tableName;
@@ -96,14 +98,13 @@ public class HCatTap extends Tap<Configuration, RecordReader, OutputCollector>
    * {@code new HCatTap(scheme, databaseName, tableName, null);}
    * </p>
    *
-   * @param scheme       {@link HCatScheme} that describes the columns to be used.
+   * @param scheme {@link HCatScheme} that describes the columns to be used.
    * @param databaseName Name of the Hive database where {@code tableName} is defined.
-   * @param tableName    Name of the Hive table that this {@link Tap} represents.
+   * @param tableName Name of the Hive table that this {@link Tap} represents.
    */
-  public HCatTap( HCatScheme scheme, String databaseName, String tableName )
-    {
-    this( scheme, databaseName, tableName, null );
-    }
+  public HCatTap(HCatScheme scheme, String databaseName, String tableName) {
+    this(scheme, databaseName, tableName, null);
+  }
 
   /**
    * Constructs a new {@link HCatTap}.
@@ -113,119 +114,104 @@ public class HCatTap extends Tap<Configuration, RecordReader, OutputCollector>
    * HCatalog filter expressions</a> for details about the {@code filter} format.
    * </p>
    *
-   * @param scheme       {@link HCatScheme} that describes the columns to be used.
+   * @param scheme {@link HCatScheme} that describes the columns to be used.
    * @param databaseName Name of the Hive database where {@code tableName} is defined.
-   * @param tableName    Name of the Hive table that this {@link Tap} represents.
-   * @param filter       A partition-selector expression.
+   * @param tableName Name of the Hive table that this {@link Tap} represents.
+   * @param filter A partition-selector expression.
    */
-  public HCatTap( HCatScheme scheme, String databaseName, String tableName, String filter )
-    {
-    super( scheme, SinkMode.KEEP ); // KEEP prevents Cascading from calling deleteResource()
+  public HCatTap(HCatScheme scheme, String databaseName, String tableName, String filter) {
+    super(scheme, SinkMode.REPLACE); // KEEP prevents Cascading from calling deleteResource()
     this.databaseName = databaseName;
     this.tableName = tableName;
     this.filter = filter;
-    }
+  }
 
   @Override
-  public String getIdentifier()
-    {
-    return String.format( "hcatalog://%s.%s", databaseName, tableName );
-    }
+  public String getIdentifier() {
+    return String.format("hcatalog://%s.%s", databaseName, tableName);
+  }
 
   @Override
-  public void sourceConfInit( FlowProcess<? extends Configuration> flowProcess, Configuration conf )
-    {
-    InputFormatWrapper.setInputFormat( conf, HCatInputFormat.class, HCatInputFormatValueCopier.class );
-    try
-      {
-      HCatInputFormat.setInput( conf, databaseName, tableName, filter );
-      }
-    catch( IOException e )
-      {
-      throw new RuntimeException( e );
-      }
-    super.sourceConfInit( flowProcess, conf );
+  public void sourceConfInit(FlowProcess<? extends Configuration> flowProcess, Configuration conf) {
+    InputFormatWrapper.setInputFormat(conf, HCatInputFormat.class, HCatInputFormatValueCopier.class);
+    try {
+      HCatInputFormat.setInput(conf, databaseName, tableName, filter);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
+    super.sourceConfInit(flowProcess, conf);
+  }
 
   @Override
-  public TupleEntryIterator openForRead( FlowProcess<? extends Configuration> flowProcess, RecordReader input )
-    throws IOException
-    {
-    return new HadoopTupleEntrySchemeIterator( flowProcess, this, input );
-    }
+  public TupleEntryIterator openForRead(FlowProcess<? extends Configuration> flowProcess, RecordReader input)
+    throws IOException {
+    return new HadoopTupleEntrySchemeIterator(flowProcess, this, input);
+  }
 
   @Override
-  public void sinkConfInit( FlowProcess<? extends Configuration> flowProcess, Configuration conf )
-    {
-    OutputFormatWrapper.setOutputFormat( conf, HCatOutputFormat.class );
-    OutputJobInfo outputJobInfo = OutputJobInfo.create( databaseName, tableName, null );
-    try
-      {
-      HCatOutputFormat.setOutput( conf, ( (JobConf) conf ).getCredentials(), outputJobInfo );
-      }
-    catch( IOException e )
-      {
-      throw new RuntimeException( e );
-      }
-    super.sinkConfInit( flowProcess, conf );
+  public void sinkConfInit(FlowProcess<? extends Configuration> flowProcess, Configuration conf) {
+    OutputFormatWrapper.setOutputFormat(conf, HCatOutputFormat.class);
+    OutputJobInfo outputJobInfo = OutputJobInfo.create(databaseName, tableName, null);
+    try {
+      HCatOutputFormat.setOutput(conf, ((JobConf) conf).getCredentials(), outputJobInfo);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
+    super.sinkConfInit(flowProcess, conf);
+  }
 
   @Override
-  public TupleEntryCollector openForWrite( FlowProcess<? extends Configuration> flowProcess, OutputCollector output )
-    throws IOException
-    {
-    return new HadoopTupleEntrySchemeCollector( flowProcess, this, output );
-    }
+  public TupleEntryCollector openForWrite(FlowProcess<? extends Configuration> flowProcess, OutputCollector output)
+    throws IOException {
+    return new HadoopTupleEntrySchemeCollector(flowProcess, this, output);
+  }
 
   @Override
-  public boolean resourceExists( Configuration conf ) throws IOException
-    {
-    HCatClient client = HCatClient.create( conf );
-    try
-      {
-      client.getTable( databaseName, tableName );
-      }
-    catch( ObjectNotFoundException e )
-      {
+  public boolean resourceExists(Configuration conf) throws IOException {
+    HCatClient client = HCatClient.create(conf);
+    try {
+      client.getTable(databaseName, tableName);
+    } catch (ObjectNotFoundException e) {
       return false;
-      }
-    finally
-      {
+    } finally {
       client.close();
-      }
+    }
     return true;
-    }
+  }
 
   @Override
-  public boolean createResource( Configuration conf ) throws IOException
-    {
-    return false;
-    }
+  public boolean createResource(Configuration conf) throws IOException {
+    return true;
+  }
 
   @Override
-  public boolean deleteResource( Configuration conf ) throws IOException
-    {
-    return false;
-    }
+  public boolean deleteResource(Configuration conf) throws IOException {
+    HCatClient client = HCatClient.create(conf);
+    HCatTable table = client.getTable(databaseName, tableName);
+    Path tableLocation = new Path(table.getLocation());
+    // List<HCatPartition> list = client.getPartitions(databaseName, tableName, partitionSelector, maxPartitions);
+    // HCatPartition h = new HCatPartition(hcatTable, partitionKeyValues, location);
+    // h.getLocation();
 
-  @Override
-  public long getModifiedTime( Configuration conf ) throws IOException
-    {
-    HCatClient client = HCatClient.create( conf );
-    try
-      {
-      HCatTable table = client.getTable( databaseName, tableName );
-      String lastModifiedTime = table.getTblProps().get( "last_modified_time" );
-      if( lastModifiedTime == null )
-        {
-        return System.currentTimeMillis();
-        }
-      return Long.parseLong( lastModifiedTime );
-      }
-    finally
-      {
-      client.close();
-      }
-    }
+    FileSystem fs = tableLocation.getFileSystem(conf);
+
+    return fs.delete(tableLocation, true);
 
   }
+
+  @Override
+  public long getModifiedTime(Configuration conf) throws IOException {
+    HCatClient client = HCatClient.create(conf);
+    try {
+      HCatTable table = client.getTable(databaseName, tableName);
+      String lastModifiedTime = table.getTblProps().get("last_modified_time");
+      if (lastModifiedTime == null) {
+        return System.currentTimeMillis();
+      }
+      return Long.parseLong(lastModifiedTime);
+    } finally {
+      client.close();
+    }
+  }
+
+}
