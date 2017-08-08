@@ -120,7 +120,7 @@ public class HCatTap extends Tap<Configuration, RecordReader, OutputCollector> {
    * @param filter A partition-selector expression.
    */
   public HCatTap(HCatScheme scheme, String databaseName, String tableName, String filter) {
-    super(scheme, SinkMode.REPLACE); // KEEP prevents Cascading from calling deleteResource()
+    super(scheme, SinkMode.KEEP); // KEEP prevents Cascading from calling deleteResource()
     this.databaseName = databaseName;
     this.tableName = tableName;
     this.filter = filter;
@@ -128,7 +128,7 @@ public class HCatTap extends Tap<Configuration, RecordReader, OutputCollector> {
 
   @Override
   public String getIdentifier() {
-    return String.format("hcatalog://%s.%s", databaseName, tableName);
+    return String.format("hcatalog://%s.%s-%s", databaseName, tableName, id(this));
   }
 
   @Override
